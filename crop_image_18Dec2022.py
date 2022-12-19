@@ -156,11 +156,11 @@ def crop_top_image_only(patient_id, img_dir, crop_shape, return_type, output_dir
     image_origin = image_obj.GetOrigin()   
     image_spacing = image_obj.GetSpacing()
     c, y, x = image_arr.shape
-    
+ 
     #Get the location of the top based on skull detection
     #Skull detected by finding peak signal 
     skull_arr = np.copy(image_arr)     
-    skull_arr[skull_arr <= 500] = 0
+    skull_arr[skull_arr <= 600] = 0
     maxSkull = []
     for iS in skull_arr[:, :, x//2]:
         i_peaks, _ = find_peaks(iS)
@@ -176,14 +176,13 @@ def crop_top_image_only(patient_id, img_dir, crop_shape, return_type, output_dir
                 maxSkull.append(0)
         except ValueError:
             maxSkull.append(0)
+    maxSkull = np.array(maxSkull)
     topSkull = np.nonzero(maxSkull)[0][-1]
-    cutLoc = int(topSkull)
+    wideSkull = np.argmax(maxSkull)
+    #midSkull = int(np.mean(np.nonzero(maxSkull)))
+    cutLoc = int((topSkull+wideSkull+wideSkull)//3)
     #Trim to certian height (from the skull to that height) before calcualte the image moment 
     if cutLoc >= 100:  
-         print ("SkullLoc")
-         print(cutLoc)
-         print("c")
-         print([c, y, x])
          # Note when trim the bottom is top (i.e. direction reverse)
          image_arr = image_arr[cutLoc-100:cutLoc, :, :]
          c, y, x = image_arr.shape
@@ -217,7 +216,6 @@ def crop_top_image_only(patient_id, img_dir, crop_shape, return_type, output_dir
     #Blank empty voxel is found by looking at standard dev. if std is zero, it mean blank slice 
     stdZ = [round(np.std(block), 1) for block in image_arr]
     stdZ_Loc = np.nonzero(stdZ)[0][-1]
-    print([stdZ_Loc, c])
     if stdZ_Loc > crop_shape[2]:
         endz = stdZ_Loc
     else:
@@ -226,6 +224,7 @@ def crop_top_image_only(patient_id, img_dir, crop_shape, return_type, output_dir
     image_arr_crop = image_arr[startz:endz, starty:starty + crop_shape[1], startx:startx + crop_shape[0]]
     
     #Save image
+    
     save_dir = output_dir + '/' + patient_id + '.' + image_format
     new_sitk_object = sitk.GetImageFromArray(image_arr_crop)
     new_sitk_object.SetSpacing(image_spacing)
@@ -241,6 +240,32 @@ def crop_upper_body(img_dir, z_BOTTOM, z_TOP):
     #Note that the indexes are reverse, bottom index is top of the head and 0 is the bottom of the scan
     img_arr = sitk.GetArrayFromImage(img_dir)
     zz, yy, xx = np.shape(img_arr)
+    
+    skull_arr = np.copy(img_arr)     
+    skull_arr[skull_arr <= 600] = 0
+    maxSkull = []
+    for iS in skull_arr[:, :, xx//2]:
+        i_peaks, _ = find_peaks(iS)
+        diff_list = []
+        try:
+            if i_peaks.any(): 
+                for iiS in range(1,len(i_peaks)):
+                    diff_list = []
+                    xP = i_peaks[iiS] - i_peaks[iiS-1]
+                    diff_list.append(xP)
+                maxSkull.append(np.max(diff_list))
+            else:
+                maxSkull.append(0)
+        except ValueError:
+            maxSkull.append(0)
+    topSkull = np.nonzero(maxSkull)[0][-1]
+    cutLoc = topSkull
+    if cutLoc >= z_TOP-z_BOTTOM:  
+         # Note when trim the bottom is top (i.e. direction reverse)
+         image_arr = img_arr[:cutLoc, :, :]
+         zz, yy, xx = image_arr.shape
+    
+    
     new_z_TOP = zz-z_BOTTOM
     new_z_BOTTOM = zz-z_TOP 
     img_arr = img_arr[new_z_BOTTOM:new_z_TOP, :, :]
